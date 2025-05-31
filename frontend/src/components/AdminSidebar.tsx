@@ -1,7 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter } from "@/components/ui/sidebar";
 import { 
   LayoutDashboard, 
   Users, 
@@ -9,8 +10,10 @@ import {
   CreditCard, 
   BarChart3,
   Settings,
-  LogOut
+  LogOut,
+  User as UserIcon
 } from "lucide-react";
+import { User } from "@/lib/api";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -20,7 +23,12 @@ const navigation = [
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
 ];
 
-export function AdminSidebar() {
+interface AdminSidebarProps {
+  onLogout: () => void;
+  user: User | null;
+}
+
+export function AdminSidebar({ onLogout, user }: AdminSidebarProps) {
   const location = useLocation();
 
   return (
@@ -61,28 +69,52 @@ export function AdminSidebar() {
             );
           })}
         </SidebarMenu>
-        
-        <div className="mt-auto pt-4 border-t">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild>
-                <Button variant="ghost" className="w-full justify-start">
-                  <Settings className="w-4 h-4 mr-3" />
-                  Settings
-                </Button>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild>
-                <Button variant="ghost" className="w-full justify-start text-destructive hover:text-destructive">
-                  <LogOut className="w-4 h-4 mr-3" />
-                  Logout
-                </Button>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </div>
       </SidebarContent>
+
+      <SidebarFooter className="p-4 border-t">
+        {/* User Profile */}
+        {user && (
+          <div className="flex items-center space-x-3 p-2 rounded-lg bg-muted/50 mb-4">
+            <Avatar className="w-8 h-8">
+              <AvatarImage src="" />
+              <AvatarFallback>
+                {user.first_name?.[0]}{user.last_name?.[0]}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">
+                {user.first_name} {user.last_name}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {user.email}
+              </p>
+            </div>
+          </div>
+        )}
+
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <Button variant="ghost" className="w-full justify-start">
+                <Settings className="w-4 h-4 mr-3" />
+                Settings
+              </Button>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <Button 
+                variant="ghost" 
+                className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={onLogout}
+              >
+                <LogOut className="w-4 h-4 mr-3" />
+                Logout
+              </Button>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }

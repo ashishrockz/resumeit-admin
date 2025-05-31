@@ -8,6 +8,8 @@ export interface User {
   first_name: string;
   last_name: string;
   is_active: boolean;
+  is_staff?: boolean;
+  is_superuser?: boolean;
   date_joined: string;
   last_login: string | null;
   profile?: {
@@ -15,6 +17,12 @@ export interface User {
     resume_count: number;
     avg_ats_score: number;
   };
+}
+
+export interface LoginResponse {
+  access: string;
+  refresh: string;
+  user?: User;
 }
 
 export interface Template {
@@ -100,10 +108,58 @@ const getAuthHeaders = () => {
 
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
+    if (response.status === 401) {
+      // Token expired or invalid
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      window.location.href = '/login';
+      throw new Error('Authentication required');
+    }
+    
     const error = await response.json().catch(() => ({ message: 'Network error' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+    throw new Error(error.message || error.detail || `HTTP ${response.status}`);
   }
   return response.json();
+};
+
+// Authentication API functions
+export const authApi = {
+  login: async (username: string, password: string): Promise<LoginResponse> => {
+    const response = await fetch(`${API_BASE_URL}/token/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    return handleResponse(response);
+  },
+
+  refreshToken: async (refreshToken: string): Promise<{ access: string }> => {
+    const response = await fetch(`${API_BASE_URL}/token/refresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: refreshToken }),
+    });
+    return handleResponse(response);
+  },
+
+  getCurrentUser: async (): Promise<User> => {
+    const response = await fetch(`${API_BASE_URL}/users/me/`, {
+      headers: getAuthHeaders(),
+    });
+    return handleResponse(response);
+  },
+
+  logout: async (): Promise<void> => {
+    // Optional: Call logout endpoint if available
+    // const response = await fetch(`${API_BASE_URL}/auth/logout/`, {
+    //   method: 'POST',
+    //   headers: getAuthHeaders(),
+    // });
+    
+    // Clear local storage
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+  },
 };
 
 // User API functions
@@ -396,33 +452,5 @@ export const analyticsApi = {
         : 0,
       // Add more calculated stats as needed
     };
-  },
-};
-
-// Authentication API functions
-export const authApi = {
-  login: async (username: string, password: string) => {
-    const response = await fetch(`${API_BASE_URL}/token/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    return handleResponse(response);
-  },
-
-  refreshToken: async (refreshToken: string) => {
-    const response = await fetch(`${API_BASE_URL}/token/refresh/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh: refreshToken }),
-    });
-    return handleResponse(response);
-  },
-
-  getCurrentUser: async () => {
-    const response = await fetch(`${API_BASE_URL}/users/me/`, {
-      headers: getAuthHeaders(),
-    });
-    return handleResponse(response);
   },
 };
