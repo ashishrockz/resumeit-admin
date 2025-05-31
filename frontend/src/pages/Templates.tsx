@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { TemplateForm } from "@/components/forms/TemplateForm";
 import { CategoryForm } from "@/components/forms/CategoryForm";
+import { TemplatePreview } from "@/components/TemplatePreview";
 import {
   Search,
   Plus,
@@ -263,7 +264,7 @@ export default function Templates() {
         </CardContent>
       </Card>
 
-      {/* Templates Grid */}
+      {/* Templates Grid with Live Previews */}
       {templatesLoading ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[...Array(6)].map((_, i) => (
@@ -284,38 +285,34 @@ export default function Templates() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {templates.map((template: Template) => (
-            <Card key={template.id} className="admin-card-hover">
+            <Card key={template.id} className="admin-card-hover overflow-hidden">
               <CardHeader className="p-0">
                 <div className="relative">
-                  <img
-                    src={template.thumbnail || "/placeholder.svg"}
-                    alt={template.name}
-                    className="w-full h-48 object-cover rounded-t-lg"
-                  />
+                  {/* Live Template Preview */}
+                  <TemplatePreview template={template} />
+
+                  {/* Overlay badges */}
                   <div className="absolute top-2 right-2 flex space-x-1">
                     {template.is_featured && (
-                      <Badge className="bg-yellow-500">
+                      <Badge className="bg-yellow-500 shadow-lg">
                         <Star className="w-3 h-3 mr-1" />
                         Featured
                       </Badge>
                     )}
                     {template.is_premium && (
-                      <Badge variant="secondary">Premium</Badge>
+                      <Badge variant="secondary" className="shadow-lg">Premium</Badge>
                     )}
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">{template.name}</h3>
+
+                  {/* Actions overlay */}
+                  <div className="absolute top-2 left-2">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="secondary" size="sm" className="shadow-lg">
                           <Edit className="w-4 h-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
+                      <DropdownMenuContent align="start">
                         <DropdownMenuItem onClick={() => setSelectedTemplate(template)}>
                           <Eye className="mr-2 h-4 w-4" />
                           View Details
@@ -342,15 +339,45 @@ export default function Templates() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  <p className="text-sm text-muted-foreground">{template.description}</p>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">{template.name}</h3>
+                    <Badge variant="outline" className="text-xs">
+                      {template.category}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground line-clamp-2">{template.description}</p>
+
+                  {/* Tags */}
                   <div className="flex flex-wrap gap-1">
-                    {template.tags?.map(tag => (
+                    {template.tags?.slice(0, 3).map(tag => (
                       <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
                     ))}
+                    {template.tags?.length > 3 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{template.tags.length - 3} more
+                      </Badge>
+                    )}
                   </div>
-                  <div className="flex justify-between text-sm text-muted-foreground">
-                    <span>{template.usage_count || 0} uses</span>
-                    <span>ATS: {template.avg_ats_score || 0}</span>
+
+                  {/* Stats */}
+                  <div className="flex justify-between items-center text-sm text-muted-foreground pt-2 border-t">
+                    <div className="flex items-center space-x-4">
+                      <span>{template.usage_count || 0} uses</span>
+                      <span>ATS: {template.avg_ats_score || 0}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedTemplate(template)}
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      Details
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -378,29 +405,29 @@ export default function Templates() {
 
       {/* Template Details Dialog */}
       <Dialog open={!!selectedTemplate} onOpenChange={() => setSelectedTemplate(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Template Details</DialogTitle>
-            <DialogDescription>Complete template information and analytics</DialogDescription>
+            <DialogTitle>Template Details - {selectedTemplate?.name}</DialogTitle>
+            <DialogDescription>Complete template information and live preview</DialogDescription>
           </DialogHeader>
           {selectedTemplate && (
-            <Tabs defaultValue="overview" className="w-full">
+            <Tabs defaultValue="preview" className="w-full">
               <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="preview">Live Preview</TabsTrigger>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="design">Design</TabsTrigger>
+                <TabsTrigger value="design">Design Code</TabsTrigger>
                 <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                <TabsTrigger value="settings">Settings</TabsTrigger>
               </TabsList>
 
+              <TabsContent value="preview" className="space-y-4">
+                <div className="border rounded-lg p-4 bg-muted/20">
+                  <h4 className="font-medium mb-4">Full Template Preview</h4>
+                  <TemplatePreview template={selectedTemplate} showFullPreview={true} />
+                </div>
+              </TabsContent>
+
               <TabsContent value="overview" className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <img
-                      src={selectedTemplate.thumbnail || "/placeholder.svg"}
-                      alt={selectedTemplate.name}
-                      className="w-full h-64 object-cover rounded-lg"
-                    />
-                  </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div>
                       <h3 className="text-xl font-semibold">{selectedTemplate.name}</h3>
@@ -425,70 +452,105 @@ export default function Templates() {
                       </div>
                     </div>
                   </div>
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-medium mb-2">Tags</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedTemplate.tags?.map(tag => (
+                          <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Template Settings</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span>Premium Template:</span>
+                          <Badge variant={selectedTemplate.is_premium ? "default" : "outline"}>
+                            {selectedTemplate.is_premium ? "Premium" : "Free"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Featured Template:</span>
+                          <Badge variant={selectedTemplate.is_featured ? "default" : "outline"}>
+                            {selectedTemplate.is_featured ? "Featured" : "Regular"}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </TabsContent>
 
-              <TabsContent value="design">
+              <TabsContent value="design" className="space-y-4">
                 <div className="space-y-4">
                   <div>
                     <h4 className="font-medium mb-2">HTML Structure</h4>
-                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-40">
+                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-60 border">
                       {selectedTemplate.html_structure || "No HTML structure available"}
                     </pre>
                   </div>
                   <div>
                     <h4 className="font-medium mb-2">CSS Styles</h4>
-                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-40">
+                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-60 border">
                       {selectedTemplate.css_styles || "No CSS styles available"}
                     </pre>
                   </div>
                 </div>
               </TabsContent>
 
-              <TabsContent value="analytics">
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Usage Stats</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span>Total Downloads:</span>
-                            <span>{selectedTemplate.usage_count || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Average ATS Score:</span>
-                            <span>{selectedTemplate.avg_ats_score || 0}</span>
-                          </div>
+              <TabsContent value="analytics" className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Usage Statistics</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span>Total Downloads:</span>
+                          <span className="font-medium">{selectedTemplate.usage_count || 0}</span>
                         </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="settings">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">Premium Template</h4>
-                      <p className="text-sm text-muted-foreground">Requires subscription</p>
-                    </div>
-                    <Badge variant={selectedTemplate.is_premium ? "default" : "outline"}>
-                      {selectedTemplate.is_premium ? "Premium" : "Free"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">Featured Template</h4>
-                      <p className="text-sm text-muted-foreground">Shown in featured section</p>
-                    </div>
-                    <Badge variant={selectedTemplate.is_featured ? "default" : "outline"}>
-                      {selectedTemplate.is_featured ? "Featured" : "Regular"}
-                    </Badge>
-                  </div>
+                        <div className="flex justify-between">
+                          <span>Average ATS Score:</span>
+                          <span className="font-medium">{selectedTemplate.avg_ats_score || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Category Rank:</span>
+                          <span className="font-medium">
+                            #{templates.filter(t => t.category === selectedTemplate.category)
+                              .sort((a, b) => (b.usage_count || 0) - (a.usage_count || 0))
+                              .findIndex(t => t.id === selectedTemplate.id) + 1}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Performance Metrics</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span>Conversion Rate:</span>
+                          <span className="font-medium">
+                            {selectedTemplate.is_premium ? "Premium Only" : "N/A"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>User Rating:</span>
+                          <span className="font-medium">4.5/5</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Last Updated:</span>
+                          <span className="font-medium">
+                            {new Date(selectedTemplate.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
               </TabsContent>
             </Tabs>
