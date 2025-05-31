@@ -52,10 +52,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (username: string, password: string) => {
     try {
       const response = await authApi.login(username, password);
-      
       localStorage.setItem('access_token', response.access);
       localStorage.setItem('refresh_token', response.refresh);
-      
       const currentUser = await authApi.getCurrentUser();
       setUser(currentUser);
     } catch (error) {

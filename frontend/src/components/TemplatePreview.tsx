@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Eye, Maximize2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Maximize2 } from "lucide-react";
 import { Template } from "@/lib/api";
 
 interface TemplatePreviewProps {
@@ -16,10 +15,9 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
   const [isLoaded, setIsLoaded] = useState(false);
 
   const createPreviewContent = () => {
-    // Add default content if template structure is missing
     const defaultContent = '<div style="padding: 20px; text-align: center; color: #666;">No preview available</div>';
     
-    const htmlContent = `
+    return `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -45,7 +43,6 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
       </body>
       </html>
     `;
-    return htmlContent;
   };
 
   useEffect(() => {
@@ -62,7 +59,6 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
     }
   }, [template?.html_structure, template?.css_styles, showFullPreview]);
 
-  // If no template is provided, show a placeholder
   if (!template) {
     return (
       <div className={`relative ${className}`}>
@@ -75,7 +71,7 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
     );
   }
 
-  return (
+  const PreviewContent = () => (
     <div className={`relative ${className}`}>
       <iframe
         ref={iframeRef}
@@ -92,29 +88,32 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
           <div className="text-sm text-muted-foreground">Loading preview...</div>
         </div>
       )}
-      {!showFullPreview && (
-        <div className="absolute inset-0 bg-transparent hover:bg-black/5 transition-colors rounded-lg flex items-center justify-center opacity-0 hover:opacity-100">
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="secondary" size="sm" className="shadow-lg">
-                <Maximize2 className="w-4 h-4 mr-2" />
-                Full Preview
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl">
-              <DialogHeader>
-                <DialogTitle>{template.name} - Full Preview</DialogTitle>
-                <DialogDescription>
-                  Complete preview of the template
-                </DialogDescription>
-              </DialogHeader>
-              <div className="mt-4">
-                <TemplatePreview template={template} showFullPreview={true} />
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      )}
+    </div>
+  );
+
+  if (showFullPreview) {
+    return <PreviewContent />;
+  }
+
+  return (
+    <div className={`relative ${className}`}>
+      <PreviewContent />
+      <div className="absolute inset-0 bg-transparent hover:bg-black/5 transition-colors rounded-lg flex items-center justify-center opacity-0 hover:opacity-100">
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="secondary" size="sm" className="shadow-lg">
+              <Maximize2 className="w-4 h-4 mr-2" />
+              Full Preview
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>{template.name} - Full Preview</DialogTitle>
+            </DialogHeader>
+            <TemplatePreview template={template} showFullPreview={true} />
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }
