@@ -16,6 +16,9 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
   const [isLoaded, setIsLoaded] = useState(false);
 
   const createPreviewContent = () => {
+    // Add default content if template structure is missing
+    const defaultContent = '<div style="padding: 20px; text-align: center; color: #666;">No preview available</div>';
+    
     const htmlContent = `
       <!DOCTYPE html>
       <html lang="en">
@@ -34,11 +37,11 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
             width: ${showFullPreview ? '100%' : '166.67%'};
             height: ${showFullPreview ? '100%' : '166.67%'};
           }
-          ${template.css_styles || ''}
+          ${template?.css_styles || ''}
         </style>
       </head>
       <body>
-        ${template.html_structure || '<div style="padding: 20px; text-align: center; color: #666;">No preview available</div>'}
+        ${template?.html_structure || defaultContent}
       </body>
       </html>
     `;
@@ -57,7 +60,20 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
         setIsLoaded(true);
       }
     }
-  }, [template.html_structure, template.css_styles, showFullPreview]);
+  }, [template?.html_structure, template?.css_styles, showFullPreview]);
+
+  // If no template is provided, show a placeholder
+  if (!template) {
+    return (
+      <div className={`relative ${className}`}>
+        <div className={`flex items-center justify-center bg-muted rounded-lg ${
+          showFullPreview ? 'h-[600px]' : 'h-48'
+        }`}>
+          <div className="text-sm text-muted-foreground">No template data available</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`relative ${className}`}>
@@ -85,14 +101,16 @@ export function TemplatePreview({ template, className = "", showFullPreview = fa
                 Full Preview
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh]">
+            <DialogContent className="max-w-4xl">
               <DialogHeader>
                 <DialogTitle>{template.name} - Full Preview</DialogTitle>
                 <DialogDescription>
-                  Complete preview of the {template.name} template
+                  Complete preview of the template
                 </DialogDescription>
               </DialogHeader>
-              <TemplatePreview template={template} showFullPreview={true} />
+              <div className="mt-4">
+                <TemplatePreview template={template} showFullPreview={true} />
+              </div>
             </DialogContent>
           </Dialog>
         </div>
