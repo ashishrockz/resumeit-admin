@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   BarChart3, 
   TrendingUp, 
@@ -18,52 +20,89 @@ import {
   Eye,
   RefreshCw
 } from "lucide-react";
+import { atsApi, userApi, subscriptionApi, analyticsApi } from "@/lib/api";
 
-// Mock analytics data
-const mockAtsData = {
-  averageScore: 78.5,
-  totalChecks: 15234,
-  improvementRate: 23.4,
-  topJobTitles: [
-    { title: "Software Engineer", count: 2341, avgScore: 82 },
-    { title: "Marketing Manager", count: 1876, avgScore: 76 },
-    { title: "Data Analyst", count: 1543, avgScore: 85 },
-    { title: "Product Manager", count: 1234, avgScore: 79 },
-    { title: "Sales Representative", count: 987, avgScore: 73 }
-  ],
-  optimizationSuggestions: [
+export default function Analytics() {
+  const [timeRange, setTimeRange] = useState("30d");
+  const [activeTab, setActiveTab] = useState("overview");
+
+  // Fetch analytics data
+  const { data: dashboardStats, isLoading: statsLoading } = useQuery({
+    queryKey: ['dashboardStats'],
+    queryFn: analyticsApi.getDashboardStats,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch ATS scores
+  const { data: atsScoresData, isLoading: atsLoading } = useQuery({
+    queryKey: ['atsScores'],
+    queryFn: () => atsApi.getScores(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch job title synonyms
+  const { data: jobTitlesData } = useQuery({
+    queryKey: ['jobTitleSynonyms'],
+    queryFn: atsApi.getJobTitleSynonyms,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Fetch user activities
+  const { data: userActivitiesData } = useQuery({
+    queryKey: ['userActivities'],
+    queryFn: () => userApi.getUserActivities(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const atsScores = atsScoresData?.results || [];
+  const jobTitles = jobTitlesData?.results || [];
+  const userActivities = userActivitiesData?.results || [];
+
+  // Calculate analytics metrics
+  const averageAtsScore = atsScores.length > 0 
+    ? atsScores.reduce((sum: number, score: any) => sum + score.score, 0) / atsScores.length 
+    : 0;
+
+  const totalAtsChecks = atsScores.length;
+
+  // Group job titles by frequency
+  const jobTitleStats = jobTitles.reduce((acc: any, title: any) => {
+    const relatedScores = atsScores.filter((score: any) => 
+      score.job_title?.toLowerCase().includes(title.title?.toLowerCase())
+    );
+    
+    if (relatedScores.length > 0) {
+      acc.push({
+        title: title.title,
+        count: relatedScores.length,
+        avgScore: relatedScores.reduce((sum: number, score: any) => sum + score.score, 0) / relatedScores.length
+      });
+    }
+    
+    return acc;
+  }, []).sort((a: any, b: any) => b.count - a.count).slice(0, 5);
+
+  // Mock optimization suggestions (would come from API)
+  const optimizationSuggestions = [
     { suggestion: "Add more keywords", frequency: 45, impact: "High" },
     { suggestion: "Improve formatting", frequency: 38, impact: "Medium" },
     { suggestion: "Quantify achievements", frequency: 32, impact: "High" },
     { suggestion: "Add skills section", frequency: 28, impact: "Medium" },
     { suggestion: "Optimize length", frequency: 22, impact: "Low" }
-  ],
-  scoreDistribution: [
-    { range: "90-100", count: 1234, percentage: 8.1 },
-    { range: "80-89", count: 3456, percentage: 22.7 },
-    { range: "70-79", count: 4567, percentage: 30.0 },
-    { range: "60-69", count: 3890, percentage: 25.5 },
-    { range: "50-59", count: 1567, percentage: 10.3 },
-    { range: "0-49", count: 520, percentage: 3.4 }
-  ]
-};
+  ];
 
-const mockUserBehavior = {
-  avgChecksPerUser: 3.2,
-  avgTimeSpent: "12:34",
-  conversionRate: 27.3,
-  retentionRate: 68.9,
-  engagementMetrics: [
-    { metric: "Resume Downloads", value: 8234, change: "+12.5%" },
-    { metric: "Template Views", value: 15678, change: "+8.3%" },
-    { metric: "ATS Checks", value: 12456, change: "+15.7%" },
-    { metric: "Account Upgrades", value: 234, change: "+23.1%" }
-  ]
-};
-
-export default function Analytics() {
-  const [timeRange, setTimeRange] = useState("30d");
-  const [activeTab, setActiveTab] = useState("overview");
+  // Calculate score distribution
+  const scoreDistribution = [
+    { range: "90-100", count: atsScores.filter((s: any) => s.score >= 90).length },
+    { range: "80-89", count: atsScores.filter((s: any) => s.score >= 80 && s.score < 90).length },
+    { range: "70-79", count: atsScores.filter((s: any) => s.score >= 70 && s.score < 80).length },
+    { range: "60-69", count: atsScores.filter((s: any) => s.score >= 60 && s.score < 70).length },
+    { range: "50-59", count: atsScores.filter((s: any) => s.score >= 50 && s.score < 60).length },
+    { range: "0-49", count: atsScores.filter((s: any) => s.score < 50).length }
+  ].map(item => ({
+    ...item,
+    percentage: totalAtsChecks > 0 ? ((item.count / totalAtsChecks) * 100).toFixed(1) : "0"
+  }));
 
   const getImpactBadge = (impact: string) => {
     const variants = {
@@ -124,8 +163,12 @@ export default function Analytics() {
                 <Target className="h-4 w-4 text-admin-primary" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mockAtsData.averageScore}</div>
-                <p className="text-xs text-muted-foreground">+2.3 from last month</p>
+                {statsLoading || atsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{averageAtsScore.toFixed(1)}</div>
+                )}
+                <p className="text-xs text-muted-foreground">Platform average</p>
               </CardContent>
             </Card>
             
@@ -135,30 +178,38 @@ export default function Analytics() {
                 <BarChart3 className="h-4 w-4 text-admin-success" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mockAtsData.totalChecks.toLocaleString()}</div>
-                <p className="text-xs text-muted-foreground">+15.7% this month</p>
+                {atsLoading ? (
+                  <Skeleton className="h-8 w-20" />
+                ) : (
+                  <div className="text-2xl font-bold">{totalAtsChecks.toLocaleString()}</div>
+                )}
+                <p className="text-xs text-muted-foreground">Total checks performed</p>
               </CardContent>
             </Card>
             
             <Card className="admin-card-hover">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Improvement Rate</CardTitle>
-                <TrendingUp className="h-4 w-4 text-admin-warning" />
+                <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+                <Users className="h-4 w-4 text-admin-warning" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mockAtsData.improvementRate}%</div>
-                <p className="text-xs text-muted-foreground">Users who improved scores</p>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{dashboardStats?.totalUsers || 0}</div>
+                )}
+                <p className="text-xs text-muted-foreground">Platform users</p>
               </CardContent>
             </Card>
             
             <Card className="admin-card-hover">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg Checks/User</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Job Titles Tracked</CardTitle>
+                <FileText className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mockUserBehavior.avgChecksPerUser}</div>
-                <p className="text-xs text-muted-foreground">Per user engagement</p>
+                <div className="text-2xl font-bold">{jobTitles.length}</div>
+                <p className="text-xs text-muted-foreground">Unique job titles</p>
               </CardContent>
             </Card>
           </div>
@@ -170,46 +221,64 @@ export default function Analytics() {
               <CardDescription>Distribution of ATS scores across all resumes</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {mockAtsData.scoreDistribution.map((range) => (
-                  <div key={range.range} className="flex items-center space-x-4">
-                    <div className="w-16 text-sm font-medium">{range.range}</div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <div className="flex-1 bg-secondary rounded-full h-2">
-                          <div 
-                            className="bg-admin-primary h-2 rounded-full" 
-                            style={{ width: `${range.percentage}%` }}
-                          ></div>
-                        </div>
-                        <div className="text-sm text-muted-foreground w-12">{range.percentage}%</div>
-                      </div>
+              {atsLoading ? (
+                <div className="space-y-4">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="flex items-center space-x-4">
+                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-2 flex-1" />
+                      <Skeleton className="h-4 w-12" />
                     </div>
-                    <div className="text-sm font-medium w-16 text-right">{range.count}</div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {scoreDistribution.map((range) => (
+                    <div key={range.range} className="flex items-center space-x-4">
+                      <div className="w-16 text-sm font-medium">{range.range}</div>
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-2">
+                          <div className="flex-1 bg-secondary rounded-full h-2">
+                            <div 
+                              className="bg-admin-primary h-2 rounded-full" 
+                              style={{ width: `${range.percentage}%` }}
+                            ></div>
+                          </div>
+                          <div className="text-sm text-muted-foreground w-12">{range.percentage}%</div>
+                        </div>
+                      </div>
+                      <div className="text-sm font-medium w-16 text-right">{range.count}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Engagement Metrics */}
+          {/* User Activities */}
           <Card>
             <CardHeader>
-              <CardTitle>User Engagement</CardTitle>
-              <CardDescription>Platform usage and engagement metrics</CardDescription>
+              <CardTitle>Recent User Activity</CardTitle>
+              <CardDescription>Latest platform engagement and usage</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {mockUserBehavior.engagementMetrics.map((metric) => (
-                  <div key={metric.metric} className="space-y-2">
-                    <div className="text-sm text-muted-foreground">{metric.metric}</div>
-                    <div className="text-2xl font-bold">{metric.value.toLocaleString()}</div>
-                    <Badge variant="outline" className="text-xs">
-                      {metric.change}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
+              {userActivities.length > 0 ? (
+                <div className="space-y-2">
+                  {userActivities.slice(0, 5).map((activity: any) => (
+                    <div key={activity.id} className="flex items-center justify-between p-2 border rounded">
+                      <div>
+                        <p className="font-medium">{activity.activity_type}</p>
+                        <p className="text-sm text-muted-foreground">{activity.description}</p>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(activity.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No recent activity data available</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -224,40 +293,44 @@ export default function Analytics() {
               <CardDescription>Most frequently analyzed job positions</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Job Title</TableHead>
-                    <TableHead>Check Count</TableHead>
-                    <TableHead>Avg ATS Score</TableHead>
-                    <TableHead>Trend</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {mockAtsData.topJobTitles.map((job, index) => (
-                    <TableRow key={job.title}>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Badge variant="outline">#{index + 1}</Badge>
-                          <span className="font-medium">{job.title}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{job.count.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Badge variant={job.avgScore >= 80 ? "default" : "secondary"}>
-                          {job.avgScore}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-1">
-                          <TrendingUp className="w-4 h-4 text-admin-success" />
-                          <span className="text-sm text-admin-success">+{Math.floor(Math.random() * 20)}%</span>
-                        </div>
-                      </TableCell>
+              {jobTitleStats.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Job Title</TableHead>
+                      <TableHead>Check Count</TableHead>
+                      <TableHead>Avg ATS Score</TableHead>
+                      <TableHead>Trend</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {jobTitleStats.map((job: any, index: number) => (
+                      <TableRow key={job.title}>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Badge variant="outline">#{index + 1}</Badge>
+                            <span className="font-medium">{job.title}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{job.count.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant={job.avgScore >= 80 ? "default" : "secondary"}>
+                            {job.avgScore.toFixed(1)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-1">
+                            <TrendingUp className="w-4 h-4 text-admin-success" />
+                            <span className="text-sm text-admin-success">+{Math.floor(Math.random() * 20)}%</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-muted-foreground">No job title data available</p>
+              )}
             </CardContent>
           </Card>
 
@@ -295,7 +368,7 @@ export default function Analytics() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockAtsData.optimizationSuggestions.map((suggestion) => (
+                  {optimizationSuggestions.map((suggestion) => (
                     <TableRow key={suggestion.suggestion}>
                       <TableCell className="font-medium">{suggestion.suggestion}</TableCell>
                       <TableCell>{suggestion.frequency}%</TableCell>
@@ -337,45 +410,53 @@ export default function Analytics() {
           <div className="grid gap-4 md:grid-cols-4">
             <Card className="admin-card-hover">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Avg Time Spent</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{mockUserBehavior.avgTimeSpent}</div>
-                <p className="text-xs text-muted-foreground">Per optimization session</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="admin-card-hover">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
-                <TrendingUp className="h-4 w-4 text-admin-success" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{mockUserBehavior.conversionRate}%</div>
-                <p className="text-xs text-muted-foreground">ATS checks to upgrades</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="admin-card-hover">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Retention Rate</CardTitle>
-                <Users className="h-4 w-4 text-admin-primary" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{mockUserBehavior.retentionRate}%</div>
-                <p className="text-xs text-muted-foreground">30-day user retention</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="admin-card-hover">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Checks per User</CardTitle>
+                <CardTitle className="text-sm font-medium">Avg Checks/User</CardTitle>
                 <Eye className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{mockUserBehavior.avgChecksPerUser}</div>
+                <div className="text-2xl font-bold">
+                  {dashboardStats?.totalUsers > 0 
+                    ? (totalAtsChecks / dashboardStats.totalUsers).toFixed(1)
+                    : "0"}
+                </div>
                 <p className="text-xs text-muted-foreground">Average per user</p>
+              </CardContent>
+            </Card>
+            
+            <Card className="admin-card-hover">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+                <Users className="h-4 w-4 text-admin-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{userActivities.length}</div>
+                <p className="text-xs text-muted-foreground">Recent activity</p>
+              </CardContent>
+            </Card>
+            
+            <Card className="admin-card-hover">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Subscriptions</CardTitle>
+                <TrendingUp className="h-4 w-4 text-admin-success" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{dashboardStats?.totalSubscriptions || 0}</div>
+                <p className="text-xs text-muted-foreground">All subscriptions</p>
+              </CardContent>
+            </Card>
+            
+            <Card className="admin-card-hover">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Engagement Rate</CardTitle>
+                <Calendar className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {dashboardStats?.totalUsers > 0 
+                    ? ((userActivities.length / dashboardStats.totalUsers) * 100).toFixed(1)
+                    : "0"}%
+                </div>
+                <p className="text-xs text-muted-foreground">User engagement</p>
               </CardContent>
             </Card>
           </div>

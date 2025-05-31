@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Search, 
   Plus, 
@@ -25,75 +28,134 @@ import {
   BarChart3
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-
-// Mock template data
-const mockTemplates = [
-  {
-    id: 1,
-    name: "Modern Professional",
-    category: "Professional",
-    description: "Clean and modern design perfect for corporate roles",
-    thumbnail: "/placeholder.svg",
-    usageCount: 1234,
-    avgAtsScore: 87,
-    isPremium: false,
-    isFeatured: true,
-    createdAt: "2024-01-15",
-    tags: ["modern", "professional", "clean"]
-  },
-  {
-    id: 2,
-    name: "Creative Designer",
-    category: "Creative",
-    description: "Bold and creative template for design professionals",
-    thumbnail: "/placeholder.svg",
-    usageCount: 856,
-    avgAtsScore: 82,
-    isPremium: true,
-    isFeatured: false,
-    createdAt: "2024-01-10",
-    tags: ["creative", "design", "colorful"]
-  },
-  {
-    id: 3,
-    name: "Tech Minimalist",
-    category: "Technology",
-    description: "Minimalist design optimized for tech roles",
-    thumbnail: "/placeholder.svg",
-    usageCount: 2341,
-    avgAtsScore: 91,
-    isPremium: true,
-    isFeatured: true,
-    createdAt: "2024-01-05",
-    tags: ["minimalist", "tech", "simple"]
-  }
-];
-
-const mockCategories = [
-  { id: 1, name: "Professional", count: 15 },
-  { id: 2, name: "Creative", count: 8 },
-  { id: 3, name: "Technology", count: 12 },
-  { id: 4, name: "Healthcare", count: 6 },
-  { id: 5, name: "Education", count: 9 }
-];
+import { templateApi, Template, TemplateCategory } from "@/lib/api";
 
 export default function Templates() {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [premiumFilter, setPremiumFilter] = useState("all");
-  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
-  const filteredTemplates = mockTemplates.filter(template => {
-    const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         template.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === "all" || template.category === categoryFilter;
-    const matchesPremium = premiumFilter === "all" || 
-                          (premiumFilter === "premium" && template.isPremium) ||
-                          (premiumFilter === "free" && !template.isPremium);
-    
-    return matchesSearch && matchesCategory && matchesPremium;
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch templates with filters
+  const { data: templatesData, isLoading: templatesLoading, error: templatesError } = useQuery({
+    queryKey: ['templates', page, searchTerm, categoryFilter, premiumFilter],
+    queryFn: () => templateApi.getTemplates({
+      page,
+      search: searchTerm || undefined,
+      category: categoryFilter !== 'all' ? categoryFilter : undefined,
+      premium: premiumFilter !== 'all' ? premiumFilter : undefined,
+    }),
+    staleTime: 5 * 60 * 1000,
   });
+
+  // Fetch categories
+  const { data: categoriesData } = useQuery({
+    queryKey: ['templateCategories'],
+    queryFn: templateApi.getCategories,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Create template mutation
+  const createTemplateMutation = useMutation({
+    mutationFn: templateApi.createTemplate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      setIsCreateDialogOpen(false);
+      toast({
+        title: "Success",
+        description: "Template created successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update template mutation
+  const updateTemplateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<Template> }) => 
+      templateApi.updateTemplate(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      toast({
+        title: "Success",
+        description: "Template updated successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete template mutation
+  const deleteTemplateMutation = useMutation({
+    mutationFn: templateApi.deleteTemplate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      toast({
+        title: "Success",
+        description: "Template deleted successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const templates = templatesData?.results || [];
+  const categories = categoriesData?.results || [];
+  const totalTemplates = templatesData?.count || 0;
+
+  const handleCreateTemplate = (formData: FormData) => {
+    const templateData = {
+      name: formData.get('name') as string,
+      description: formData.get('description') as string,
+      category: formData.get('category') as string,
+      html_structure: formData.get('html') as string,
+      css_styles: formData.get('css') as string,
+      is_premium: formData.get('premium') === 'on',
+      is_featured: formData.get('featured') === 'on',
+      tags: (formData.get('tags') as string)?.split(',').map(tag => tag.trim()) || [],
+    };
+    createTemplateMutation.mutate(templateData);
+  };
+
+  const handleDeleteTemplate = (templateId: number) => {
+    if (confirm('Are you sure you want to delete this template?')) {
+      deleteTemplateMutation.mutate(templateId);
+    }
+  };
+
+  if (templatesError) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-destructive">
+              Error loading templates: {(templatesError as Error).message}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -102,7 +164,7 @@ export default function Templates() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Template Management</h1>
           <p className="text-muted-foreground">
-            Manage resume templates, categories, and design elements
+            Manage resume templates, categories, and design elements ({totalTemplates} total)
           </p>
         </div>
         <div className="flex space-x-2">
@@ -122,95 +184,97 @@ export default function Templates() {
                 <DialogTitle>Create New Template</DialogTitle>
                 <DialogDescription>Design a new resume template</DialogDescription>
               </DialogHeader>
-              <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                  <TabsTrigger value="design">Design</TabsTrigger>
-                  <TabsTrigger value="settings">Settings</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="basic" className="space-y-4">
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="name">Template Name</Label>
-                      <Input id="name" placeholder="Enter template name" />
-                    </div>
-                    <div>
-                      <Label htmlFor="description">Description</Label>
-                      <Textarea id="description" placeholder="Describe the template" />
-                    </div>
-                    <div>
-                      <Label htmlFor="category">Category</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select category" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {mockCategories.map(cat => (
-                            <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="tags">Tags (comma separated)</Label>
-                      <Input id="tags" placeholder="modern, professional, clean" />
-                    </div>
-                  </div>
-                </TabsContent>
-                
-                <TabsContent value="design" className="space-y-4">
-                  <div className="space-y-4">
-                    <div>
-                      <Label>Template Preview</Label>
-                      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
-                        <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">Upload template thumbnail</p>
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="html">HTML Structure</Label>
-                      <Textarea id="html" placeholder="Enter HTML structure" className="h-32" />
-                    </div>
-                    <div>
-                      <Label htmlFor="css">CSS Styles</Label>
-                      <Textarea id="css" placeholder="Enter CSS styles" className="h-32" />
-                    </div>
-                  </div>
-                </TabsContent>
-                
-                <TabsContent value="settings" className="space-y-4">
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateTemplate(new FormData(e.currentTarget));
+              }}>
+                <Tabs defaultValue="basic" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="basic">Basic Info</TabsTrigger>
+                    <TabsTrigger value="design">Design</TabsTrigger>
+                    <TabsTrigger value="settings">Settings</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="basic" className="space-y-4">
+                    <div className="space-y-4">
                       <div>
-                        <Label htmlFor="premium">Premium Template</Label>
-                        <p className="text-sm text-muted-foreground">Require subscription to use</p>
+                        <Label htmlFor="name">Template Name</Label>
+                        <Input id="name" name="name" placeholder="Enter template name" required />
                       </div>
-                      <Switch id="premium" />
-                    </div>
-                    <div className="flex items-center justify-between">
                       <div>
-                        <Label htmlFor="featured">Featured Template</Label>
-                        <p className="text-sm text-muted-foreground">Show in featured section</p>
+                        <Label htmlFor="description">Description</Label>
+                        <Textarea id="description" name="description" placeholder="Describe the template" />
                       </div>
-                      <Switch id="featured" />
-                    </div>
-                    <div className="flex items-center justify-between">
                       <div>
-                        <Label htmlFor="active">Active</Label>
-                        <p className="text-sm text-muted-foreground">Make template available to users</p>
+                        <Label htmlFor="category">Category</Label>
+                        <Select name="category">
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat: TemplateCategory) => (
+                              <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <Switch id="active" defaultChecked />
+                      <div>
+                        <Label htmlFor="tags">Tags (comma separated)</Label>
+                        <Input id="tags" name="tags" placeholder="modern, professional, clean" />
+                      </div>
                     </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-              <div className="flex space-x-2 pt-4">
-                <Button variant="outline" className="flex-1" onClick={() => setIsCreateDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button className="flex-1">Create Template</Button>
-              </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="design" className="space-y-4">
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="html">HTML Structure</Label>
+                        <Textarea id="html" name="html" placeholder="Enter HTML structure" className="h-32" />
+                      </div>
+                      <div>
+                        <Label htmlFor="css">CSS Styles</Label>
+                        <Textarea id="css" name="css" placeholder="Enter CSS styles" className="h-32" />
+                      </div>
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="settings" className="space-y-4">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label htmlFor="premium">Premium Template</Label>
+                          <p className="text-sm text-muted-foreground">Require subscription to use</p>
+                        </div>
+                        <Switch id="premium" name="premium" />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label htmlFor="featured">Featured Template</Label>
+                          <p className="text-sm text-muted-foreground">Show in featured section</p>
+                        </div>
+                        <Switch id="featured" name="featured" />
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+                <div className="flex space-x-2 pt-4">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="flex-1" 
+                    onClick={() => setIsCreateDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="flex-1"
+                    disabled={createTemplateMutation.isPending}
+                  >
+                    {createTemplateMutation.isPending ? "Creating..." : "Create Template"}
+                  </Button>
+                </div>
+              </form>
             </DialogContent>
           </Dialog>
         </div>
@@ -224,8 +288,8 @@ export default function Templates() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockTemplates.length}</div>
-            <p className="text-xs text-muted-foreground">+2 from last month</p>
+            <div className="text-2xl font-bold">{totalTemplates}</div>
+            <p className="text-xs text-muted-foreground">Available templates</p>
           </CardContent>
         </Card>
         
@@ -235,7 +299,7 @@ export default function Templates() {
             <Layout className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockCategories.length}</div>
+            <div className="text-2xl font-bold">{categories.length}</div>
             <p className="text-xs text-muted-foreground">Active categories</p>
           </CardContent>
         </Card>
@@ -247,7 +311,7 @@ export default function Templates() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {mockTemplates.reduce((sum, t) => sum + t.usageCount, 0).toLocaleString()}
+              {templates.reduce((sum, t) => sum + (t.usage_count || 0), 0).toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">Template downloads</p>
           </CardContent>
@@ -260,7 +324,9 @@ export default function Templates() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {Math.round(mockTemplates.reduce((sum, t) => sum + t.avgAtsScore, 0) / mockTemplates.length)}
+              {templates.length > 0 
+                ? Math.round(templates.reduce((sum, t) => sum + (t.avg_ats_score || 0), 0) / templates.length)
+                : 0}
             </div>
             <p className="text-xs text-muted-foreground">Across all templates</p>
           </CardContent>
@@ -286,7 +352,7 @@ export default function Templates() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                {mockCategories.map(cat => (
+                {categories.map((cat: TemplateCategory) => (
                   <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -306,78 +372,100 @@ export default function Templates() {
       </Card>
 
       {/* Templates Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {filteredTemplates.map((template) => (
-          <Card key={template.id} className="admin-card-hover">
-            <CardHeader className="p-0">
-              <div className="relative">
-                <img 
-                  src={template.thumbnail} 
-                  alt={template.name}
-                  className="w-full h-48 object-cover rounded-t-lg"
-                />
-                <div className="absolute top-2 right-2 flex space-x-1">
-                  {template.isFeatured && (
-                    <Badge className="bg-yellow-500">
-                      <Star className="w-3 h-3 mr-1" />
-                      Featured
-                    </Badge>
-                  )}
-                  {template.isPremium && (
-                    <Badge variant="secondary">Premium</Badge>
-                  )}
+      {templatesLoading ? (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="admin-card-hover">
+              <CardHeader className="p-0">
+                <Skeleton className="w-full h-48 rounded-t-lg" />
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-1/2" />
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">{template.name}</h3>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm">
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setSelectedTemplate(template)}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        View Details
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit Template
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Duplicate
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <Download className="mr-2 h-4 w-4" />
-                        Export
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {templates.map((template: Template) => (
+            <Card key={template.id} className="admin-card-hover">
+              <CardHeader className="p-0">
+                <div className="relative">
+                  <img 
+                    src={template.thumbnail || "/placeholder.svg"} 
+                    alt={template.name}
+                    className="w-full h-48 object-cover rounded-t-lg"
+                  />
+                  <div className="absolute top-2 right-2 flex space-x-1">
+                    {template.is_featured && (
+                      <Badge className="bg-yellow-500">
+                        <Star className="w-3 h-3 mr-1" />
+                        Featured
+                      </Badge>
+                    )}
+                    {template.is_premium && (
+                      <Badge variant="secondary">Premium</Badge>
+                    )}
+                  </div>
                 </div>
-                <p className="text-sm text-muted-foreground">{template.description}</p>
-                <div className="flex flex-wrap gap-1">
-                  {template.tags.map(tag => (
-                    <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
-                  ))}
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">{template.name}</h3>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setSelectedTemplate(template)}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit Template
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Download className="mr-2 h-4 w-4" />
+                          Export
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="text-destructive"
+                          onClick={() => handleDeleteTemplate(template.id)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{template.description}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {template.tags?.map(tag => (
+                      <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>{template.usage_count || 0} uses</span>
+                    <span>ATS: {template.avg_ats_score || 0}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>{template.usageCount} uses</span>
-                  <span>ATS: {template.avgAtsScore}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Template Details Dialog */}
       <Dialog open={!!selectedTemplate} onOpenChange={() => setSelectedTemplate(null)}>
@@ -399,7 +487,7 @@ export default function Templates() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <img 
-                      src={selectedTemplate.thumbnail} 
+                      src={selectedTemplate.thumbnail || "/placeholder.svg"} 
                       alt={selectedTemplate.name}
                       className="w-full h-64 object-cover rounded-lg"
                     />
@@ -416,15 +504,15 @@ export default function Templates() {
                       </div>
                       <div className="flex justify-between">
                         <span>Usage Count:</span>
-                        <span>{selectedTemplate.usageCount}</span>
+                        <span>{selectedTemplate.usage_count || 0}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Avg ATS Score:</span>
-                        <Badge variant="outline">{selectedTemplate.avgAtsScore}</Badge>
+                        <Badge variant="outline">{selectedTemplate.avg_ats_score || 0}</Badge>
                       </div>
                       <div className="flex justify-between">
                         <span>Created:</span>
-                        <span>{selectedTemplate.createdAt}</span>
+                        <span>{new Date(selectedTemplate.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </div>
@@ -433,22 +521,66 @@ export default function Templates() {
               
               <TabsContent value="design">
                 <div className="space-y-4">
-                  <p className="text-muted-foreground">Template design and structure details</p>
-                  {/* Design editor would go here */}
+                  <div>
+                    <Label>HTML Structure</Label>
+                    <Textarea 
+                      value={selectedTemplate.html_structure || ""} 
+                      readOnly 
+                      className="h-32"
+                    />
+                  </div>
+                  <div>
+                    <Label>CSS Styles</Label>
+                    <Textarea 
+                      value={selectedTemplate.css_styles || ""} 
+                      readOnly 
+                      className="h-32"
+                    />
+                  </div>
                 </div>
               </TabsContent>
               
               <TabsContent value="analytics">
                 <div className="space-y-4">
                   <p className="text-muted-foreground">Usage analytics and performance metrics</p>
-                  {/* Analytics charts would go here */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Usage Stats</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <span>Total Downloads:</span>
+                            <span>{selectedTemplate.usage_count || 0}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Average ATS Score:</span>
+                            <span>{selectedTemplate.avg_ats_score || 0}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               </TabsContent>
               
               <TabsContent value="settings">
                 <div className="space-y-4">
-                  <p className="text-muted-foreground">Template configuration and permissions</p>
-                  {/* Settings form would go here */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Premium Template</Label>
+                      <p className="text-sm text-muted-foreground">Requires subscription</p>
+                    </div>
+                    <Switch checked={selectedTemplate.is_premium} disabled />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label>Featured Template</Label>
+                      <p className="text-sm text-muted-foreground">Shown in featured section</p>
+                    </div>
+                    <Switch checked={selectedTemplate.is_featured} disabled />
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
