@@ -7,17 +7,16 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Search, 
-  Plus, 
-  Eye, 
-  Edit, 
-  Trash2, 
+import { TemplateForm } from "@/components/forms/TemplateForm";
+import { CategoryForm } from "@/components/forms/CategoryForm";
+import {
+  Search,
+  Plus,
+  Eye,
+  Edit,
+  Trash2,
   Copy,
   Star,
   Download,
@@ -25,7 +24,8 @@ import {
   FileText,
   Palette,
   Layout,
-  BarChart3
+  BarChart3,
+  FolderPlus
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { templateApi, Template, TemplateCategory } from "@/lib/api";
@@ -35,7 +35,10 @@ export default function Templates() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [premiumFilter, setPremiumFilter] = useState("all");
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
 
   const { toast } = useToast();
@@ -58,46 +61,6 @@ export default function Templates() {
     queryKey: ['templateCategories'],
     queryFn: templateApi.getCategories,
     staleTime: 10 * 60 * 1000,
-  });
-
-  // Create template mutation
-  const createTemplateMutation = useMutation({
-    mutationFn: templateApi.createTemplate,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] });
-      setIsCreateDialogOpen(false);
-      toast({
-        title: "Success",
-        description: "Template created successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Update template mutation
-  const updateTemplateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Template> }) => 
-      templateApi.updateTemplate(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] });
-      toast({
-        title: "Success",
-        description: "Template updated successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
   });
 
   // Delete template mutation
@@ -123,24 +86,22 @@ export default function Templates() {
   const categories = categoriesData?.results || [];
   const totalTemplates = templatesData?.count || 0;
 
-  const handleCreateTemplate = (formData: FormData) => {
-    const templateData = {
-      name: formData.get('name') as string,
-      description: formData.get('description') as string,
-      category: formData.get('category') as string,
-      html_structure: formData.get('html') as string,
-      css_styles: formData.get('css') as string,
-      is_premium: formData.get('premium') === 'on',
-      is_featured: formData.get('featured') === 'on',
-      tags: (formData.get('tags') as string)?.split(',').map(tag => tag.trim()) || [],
-    };
-    createTemplateMutation.mutate(templateData);
-  };
-
   const handleDeleteTemplate = (templateId: number) => {
     if (confirm('Are you sure you want to delete this template?')) {
       deleteTemplateMutation.mutate(templateId);
     }
+  };
+
+  const handleEditTemplate = (template: Template) => {
+    setEditingTemplate(template);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleFormSuccess = () => {
+    setIsCreateDialogOpen(false);
+    setIsEditDialogOpen(false);
+    setIsCategoryDialogOpen(false);
+    setEditingTemplate(null);
   };
 
   if (templatesError) {
@@ -168,6 +129,24 @@ export default function Templates() {
           </p>
         </div>
         <div className="flex space-x-2">
+          <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <FolderPlus className="w-4 h-4 mr-2" />
+                Add Category
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Category</DialogTitle>
+                <DialogDescription>Create a new template category</DialogDescription>
+              </DialogHeader>
+              <CategoryForm
+                onSuccess={handleFormSuccess}
+                onCancel={() => setIsCategoryDialogOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
           <Button variant="outline">
             <Upload className="w-4 h-4 mr-2" />
             Import Template
@@ -179,102 +158,15 @@ export default function Templates() {
                 Create Template
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New Template</DialogTitle>
                 <DialogDescription>Design a new resume template</DialogDescription>
               </DialogHeader>
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                handleCreateTemplate(new FormData(e.currentTarget));
-              }}>
-                <Tabs defaultValue="basic" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="basic">Basic Info</TabsTrigger>
-                    <TabsTrigger value="design">Design</TabsTrigger>
-                    <TabsTrigger value="settings">Settings</TabsTrigger>
-                  </TabsList>
-                  
-                  <TabsContent value="basic" className="space-y-4">
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="name">Template Name</Label>
-                        <Input id="name" name="name" placeholder="Enter template name" required />
-                      </div>
-                      <div>
-                        <Label htmlFor="description">Description</Label>
-                        <Textarea id="description" name="description" placeholder="Describe the template" />
-                      </div>
-                      <div>
-                        <Label htmlFor="category">Category</Label>
-                        <Select name="category">
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {categories.map((cat: TemplateCategory) => (
-                              <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="tags">Tags (comma separated)</Label>
-                        <Input id="tags" name="tags" placeholder="modern, professional, clean" />
-                      </div>
-                    </div>
-                  </TabsContent>
-                  
-                  <TabsContent value="design" className="space-y-4">
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="html">HTML Structure</Label>
-                        <Textarea id="html" name="html" placeholder="Enter HTML structure" className="h-32" />
-                      </div>
-                      <div>
-                        <Label htmlFor="css">CSS Styles</Label>
-                        <Textarea id="css" name="css" placeholder="Enter CSS styles" className="h-32" />
-                      </div>
-                    </div>
-                  </TabsContent>
-                  
-                  <TabsContent value="settings" className="space-y-4">
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label htmlFor="premium">Premium Template</Label>
-                          <p className="text-sm text-muted-foreground">Require subscription to use</p>
-                        </div>
-                        <Switch id="premium" name="premium" />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Label htmlFor="featured">Featured Template</Label>
-                          <p className="text-sm text-muted-foreground">Show in featured section</p>
-                        </div>
-                        <Switch id="featured" name="featured" />
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-                <div className="flex space-x-2 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="flex-1" 
-                    onClick={() => setIsCreateDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    className="flex-1"
-                    disabled={createTemplateMutation.isPending}
-                  >
-                    {createTemplateMutation.isPending ? "Creating..." : "Create Template"}
-                  </Button>
-                </div>
-              </form>
+              <TemplateForm
+                onSuccess={handleFormSuccess}
+                onCancel={() => setIsCreateDialogOpen(false)}
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -292,7 +184,7 @@ export default function Templates() {
             <p className="text-xs text-muted-foreground">Available templates</p>
           </CardContent>
         </Card>
-        
+
         <Card className="admin-card-hover">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Categories</CardTitle>
@@ -303,7 +195,7 @@ export default function Templates() {
             <p className="text-xs text-muted-foreground">Active categories</p>
           </CardContent>
         </Card>
-        
+
         <Card className="admin-card-hover">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Usage</CardTitle>
@@ -316,7 +208,7 @@ export default function Templates() {
             <p className="text-xs text-muted-foreground">Template downloads</p>
           </CardContent>
         </Card>
-        
+
         <Card className="admin-card-hover">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg ATS Score</CardTitle>
@@ -324,7 +216,7 @@ export default function Templates() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {templates.length > 0 
+              {templates.length > 0
                 ? Math.round(templates.reduce((sum, t) => sum + (t.avg_ats_score || 0), 0) / templates.length)
                 : 0}
             </div>
@@ -395,8 +287,8 @@ export default function Templates() {
             <Card key={template.id} className="admin-card-hover">
               <CardHeader className="p-0">
                 <div className="relative">
-                  <img 
-                    src={template.thumbnail || "/placeholder.svg"} 
+                  <img
+                    src={template.thumbnail || "/placeholder.svg"}
                     alt={template.name}
                     className="w-full h-48 object-cover rounded-t-lg"
                   />
@@ -428,7 +320,7 @@ export default function Templates() {
                           <Eye className="mr-2 h-4 w-4" />
                           View Details
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditTemplate(template)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Edit Template
                         </DropdownMenuItem>
@@ -440,7 +332,7 @@ export default function Templates() {
                           <Download className="mr-2 h-4 w-4" />
                           Export
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => handleDeleteTemplate(template.id)}
                         >
@@ -467,6 +359,23 @@ export default function Templates() {
         </div>
       )}
 
+      {/* Edit Template Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Template</DialogTitle>
+            <DialogDescription>Update template information and design</DialogDescription>
+          </DialogHeader>
+          {editingTemplate && (
+            <TemplateForm
+              template={editingTemplate}
+              onSuccess={handleFormSuccess}
+              onCancel={() => setIsEditDialogOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Template Details Dialog */}
       <Dialog open={!!selectedTemplate} onOpenChange={() => setSelectedTemplate(null)}>
         <DialogContent className="max-w-4xl">
@@ -482,12 +391,12 @@ export default function Templates() {
                 <TabsTrigger value="analytics">Analytics</TabsTrigger>
                 <TabsTrigger value="settings">Settings</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="overview" className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <img 
-                      src={selectedTemplate.thumbnail || "/placeholder.svg"} 
+                    <img
+                      src={selectedTemplate.thumbnail || "/placeholder.svg"}
                       alt={selectedTemplate.name}
                       className="w-full h-64 object-cover rounded-lg"
                     />
@@ -518,31 +427,26 @@ export default function Templates() {
                   </div>
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="design">
                 <div className="space-y-4">
                   <div>
-                    <Label>HTML Structure</Label>
-                    <Textarea 
-                      value={selectedTemplate.html_structure || ""} 
-                      readOnly 
-                      className="h-32"
-                    />
+                    <h4 className="font-medium mb-2">HTML Structure</h4>
+                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-40">
+                      {selectedTemplate.html_structure || "No HTML structure available"}
+                    </pre>
                   </div>
                   <div>
-                    <Label>CSS Styles</Label>
-                    <Textarea 
-                      value={selectedTemplate.css_styles || ""} 
-                      readOnly 
-                      className="h-32"
-                    />
+                    <h4 className="font-medium mb-2">CSS Styles</h4>
+                    <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-40">
+                      {selectedTemplate.css_styles || "No CSS styles available"}
+                    </pre>
                   </div>
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="analytics">
                 <div className="space-y-4">
-                  <p className="text-muted-foreground">Usage analytics and performance metrics</p>
                   <div className="grid grid-cols-2 gap-4">
                     <Card>
                       <CardHeader>
@@ -564,22 +468,26 @@ export default function Templates() {
                   </div>
                 </div>
               </TabsContent>
-              
+
               <TabsContent value="settings">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label>Premium Template</Label>
+                      <h4 className="font-medium">Premium Template</h4>
                       <p className="text-sm text-muted-foreground">Requires subscription</p>
                     </div>
-                    <Switch checked={selectedTemplate.is_premium} disabled />
+                    <Badge variant={selectedTemplate.is_premium ? "default" : "outline"}>
+                      {selectedTemplate.is_premium ? "Premium" : "Free"}
+                    </Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <div>
-                      <Label>Featured Template</Label>
+                      <h4 className="font-medium">Featured Template</h4>
                       <p className="text-sm text-muted-foreground">Shown in featured section</p>
                     </div>
-                    <Switch checked={selectedTemplate.is_featured} disabled />
+                    <Badge variant={selectedTemplate.is_featured ? "default" : "outline"}>
+                      {selectedTemplate.is_featured ? "Featured" : "Regular"}
+                    </Badge>
                   </div>
                 </div>
               </TabsContent>

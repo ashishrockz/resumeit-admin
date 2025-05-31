@@ -8,10 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { SubscriptionPlanForm } from "@/components/forms/SubscriptionPlanForm";
 import { 
   Search, 
   Plus, 
@@ -36,6 +35,8 @@ export default function Subscriptions() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreatePlanOpen, setIsCreatePlanOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
+  const [isEditPlanOpen, setIsEditPlanOpen] = useState(false);
   const [page, setPage] = useState(1);
 
   const { toast } = useToast();
@@ -70,26 +71,6 @@ export default function Subscriptions() {
     queryKey: ['users'],
     queryFn: () => userApi.getUsers(),
     staleTime: 10 * 60 * 1000,
-  });
-
-  // Create plan mutation
-  const createPlanMutation = useMutation({
-    mutationFn: subscriptionApi.createPlan,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['subscriptionPlans'] });
-      setIsCreatePlanOpen(false);
-      toast({
-        title: "Success",
-        description: "Subscription plan created successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
   });
 
   // Cancel subscription mutation
@@ -168,17 +149,6 @@ export default function Subscriptions() {
     );
   };
 
-  const handleCreatePlan = (formData: FormData) => {
-    const planData = {
-      name: formData.get('name') as string,
-      price: parseFloat(formData.get('price') as string),
-      duration_months: parseInt(formData.get('duration') as string),
-      features: (formData.get('features') as string)?.split('\n').filter(f => f.trim()) || [],
-      is_active: formData.get('active') === 'on',
-    };
-    createPlanMutation.mutate(planData);
-  };
-
   const handleCancelSubscription = (subscriptionId: number) => {
     if (confirm('Are you sure you want to cancel this subscription?')) {
       cancelSubscriptionMutation.mutate(subscriptionId);
@@ -189,13 +159,23 @@ export default function Subscriptions() {
     renewSubscriptionMutation.mutate(subscriptionId);
   };
 
+  const handleEditPlan = (plan: SubscriptionPlan) => {
+    setEditingPlan(plan);
+    setIsEditPlanOpen(true);
+  };
+
+  const handleFormSuccess = () => {
+    setIsCreatePlanOpen(false);
+    setIsEditPlanOpen(false);
+    setEditingPlan(null);
+  };
+
   // Calculate metrics
   const totalRevenue = transactions
     .filter(t => t.status === "completed")
     .reduce((sum, t) => sum + t.amount, 0);
   const totalSubscribers = plans.reduce((sum, p) => sum + (p.subscriber_count || 0), 0);
   const activeSubscriptions = subscriptions.filter(s => s.status === 'active').length;
-  const conversionRate = totalSubscribers > 0 ? ((activeSubscriptions / totalSubscribers) * 100).toFixed(1) : "0";
 
   return (
     <div className="p-6 space-y-6 animate-fade-in">
@@ -219,61 +199,15 @@ export default function Subscriptions() {
                 Create Plan
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create Subscription Plan</DialogTitle>
                 <DialogDescription>Add a new pricing plan</DialogDescription>
               </DialogHeader>
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                handleCreatePlan(new FormData(e.currentTarget));
-              }} className="space-y-4">
-                <div>
-                  <Label htmlFor="planName">Plan Name</Label>
-                  <Input id="planName" name="name" placeholder="e.g., Premium" required />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="price">Price ($)</Label>
-                    <Input id="price" name="price" type="number" step="0.01" placeholder="9.99" required />
-                  </div>
-                  <div>
-                    <Label htmlFor="duration">Duration (months)</Label>
-                    <Input id="duration" name="duration" type="number" placeholder="1" required />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="features">Features (one per line)</Label>
-                  <textarea 
-                    id="features"
-                    name="features"
-                    className="w-full p-2 border rounded-md"
-                    rows={4}
-                    placeholder="Unlimited Resumes&#10;Premium Templates&#10;ATS Optimization"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="active">Active Plan</Label>
-                  <Switch id="active" name="active" defaultChecked />
-                </div>
-                <div className="flex space-x-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="flex-1" 
-                    onClick={() => setIsCreatePlanOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    className="flex-1"
-                    disabled={createPlanMutation.isPending}
-                  >
-                    {createPlanMutation.isPending ? "Creating..." : "Create Plan"}
-                  </Button>
-                </div>
-              </form>
+              <SubscriptionPlanForm 
+                onSuccess={handleFormSuccess}
+                onCancel={() => setIsCreatePlanOpen(false)}
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -382,7 +316,7 @@ export default function Subscriptions() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEditPlan(plan)}>
                             <Edit className="mr-2 h-4 w-4" />
                             Edit Plan
                           </DropdownMenuItem>
@@ -620,6 +554,23 @@ export default function Subscriptions() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Edit Plan Dialog */}
+      <Dialog open={isEditPlanOpen} onOpenChange={setIsEditPlanOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Subscription Plan</DialogTitle>
+            <DialogDescription>Update plan information and pricing</DialogDescription>
+          </DialogHeader>
+          {editingPlan && (
+            <SubscriptionPlanForm 
+              plan={editingPlan}
+              onSuccess={handleFormSuccess}
+              onCancel={() => setIsEditPlanOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { UserForm } from "@/components/forms/UserForm";
 import { 
   Search, 
   Filter, 
@@ -35,8 +36,10 @@ export default function Users() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [subscriptionFilter, setSubscriptionFilter] = useState("all");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [page, setPage] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -65,46 +68,6 @@ export default function Users() {
     queryKey: ['userSubscriptions', selectedUser?.id],
     queryFn: () => selectedUser ? subscriptionApi.getSubscriptions({ user: selectedUser.id }) : null,
     enabled: !!selectedUser,
-  });
-
-  // Create user mutation
-  const createUserMutation = useMutation({
-    mutationFn: userApi.createUser,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setIsCreateDialogOpen(false);
-      toast({
-        title: "Success",
-        description: "User created successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Update user mutation
-  const updateUserMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<User> }) => 
-      userApi.updateUser(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      toast({
-        title: "Success",
-        description: "User updated successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
   });
 
   // Delete user mutation
@@ -145,20 +108,21 @@ export default function Users() {
     );
   };
 
-  const handleCreateUser = (formData: FormData) => {
-    const userData = {
-      username: formData.get('username') as string,
-      email: formData.get('email') as string,
-      first_name: formData.get('firstName') as string,
-      last_name: formData.get('lastName') as string,
-    };
-    createUserMutation.mutate(userData);
-  };
-
   const handleDeleteUser = (userId: number) => {
     if (confirm('Are you sure you want to delete this user?')) {
       deleteUserMutation.mutate(userId);
     }
+  };
+
+  const handleEditUser = (user: User) => {
+    setEditingUser(user);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleFormSuccess = () => {
+    setIsCreateDialogOpen(false);
+    setIsEditDialogOpen(false);
+    setEditingUser(null);
   };
 
   if (usersError) {
@@ -197,37 +161,15 @@ export default function Users() {
                 Add User
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add New User</DialogTitle>
                 <DialogDescription>Create a new user account</DialogDescription>
               </DialogHeader>
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                handleCreateUser(new FormData(e.currentTarget));
-              }} className="space-y-4">
-                <Input name="username" placeholder="Username" required />
-                <Input name="email" placeholder="Email Address" type="email" required />
-                <Input name="firstName" placeholder="First Name" required />
-                <Input name="lastName" placeholder="Last Name" required />
-                <div className="flex space-x-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => setIsCreateDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    className="flex-1"
-                    disabled={createUserMutation.isPending}
-                  >
-                    {createUserMutation.isPending ? "Creating..." : "Create User"}
-                  </Button>
-                </div>
-              </form>
+              <UserForm 
+                onSuccess={handleFormSuccess}
+                onCancel={() => setIsCreateDialogOpen(false)}
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -338,7 +280,7 @@ export default function Users() {
                             <Eye className="mr-2 h-4 w-4" />
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEditUser(user)}>
                             <Edit className="mr-2 h-4 w-4" />
                             Edit User
                           </DropdownMenuItem>
@@ -363,6 +305,23 @@ export default function Users() {
           )}
         </CardContent>
       </Card>
+
+      {/* Edit User Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>Update user information</DialogDescription>
+          </DialogHeader>
+          {editingUser && (
+            <UserForm 
+              user={editingUser}
+              onSuccess={handleFormSuccess}
+              onCancel={() => setIsEditDialogOpen(false)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* User Details Dialog */}
       <Dialog open={!!selectedUser} onOpenChange={() => setSelectedUser(null)}>
